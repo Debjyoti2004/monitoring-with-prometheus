@@ -4,19 +4,30 @@ import client from 'prom-client';
 
 const register = new client.Registry();
 
+// Counter type metrics
 const requestCounter = new client.Counter({
     name: 'http_requests_total',
     help: 'Total number of HTTP requests',
     labelNames: ['method', 'route', 'status_code']
 });
 
+// Gauge type metrics
 const activeRequestsGauge = new client.Gauge({
     name: 'http_active_requests',
     help: 'Current number of active HTTP requests'
 });
 
+// Histograms
+const httpRequestDurationMicroseconds = new client.Histogram({
+    name: 'http_request_duration_seconds',
+    help: 'Duration of HTTP requests in seconds',
+    labelNames: ['method', 'route', 'status_code'],
+    buckets: [0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5]
+});
+
 register.registerMetric(requestCounter);
 register.registerMetric(activeRequestsGauge);
+register.registerMetric(httpRequestDurationMicroseconds);
 
 function middleware(req: Request, res: Response, next: NextFunction) {
 
@@ -37,6 +48,12 @@ function middleware(req: Request, res: Response, next: NextFunction) {
         if(req.path !== '/metrics') {
         activeRequestsGauge.dec();
         }
+
+        httpRequestDurationMicroseconds.observe({
+            method: req.method,
+            route: req.route ? req.route.path : req.path,
+            status_code: res.statusCode
+        }, endTime - startTime);
     });
     next();
 };
@@ -54,7 +71,7 @@ app.get("/", (req, res) => {
 
 app.get("/cpu", async (req, res) => {
     //for (let i = 0; i < 100000000000000; i++) {}    // Simulate CPU intensive task (it's single threaded so if I open lots of tap and hit this end point its doing job first in first out, So i cant see the metrics end point while this is running)
-    await new Promise(resolve => setTimeout(resolve, 100000)); // Simulate CPU intensive task with delay
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 1000)); // Simulate CPU intensive task with delay
     res.json({
         message: "CPU intensive task completed"
     });
